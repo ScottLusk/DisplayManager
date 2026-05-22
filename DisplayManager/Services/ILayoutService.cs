@@ -8,6 +8,7 @@ public interface ILayoutService
   event EventHandler<IList<string>>? LayoutsChanged;
 
   Task<List<string>> GetSavedLayouts();
+  Task<int> ClearLayouts();
   Task<Layout?> GetLayout(string name);
   Task SaveLayout(string name, Layout layout);
 }

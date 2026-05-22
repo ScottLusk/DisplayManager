@@ -3,6 +3,7 @@ namespace Gregghz.DisplayManager.Model;
 public record Settings(
   string DeviceId,
   bool IsPrimary,
+  bool IsConnected,
   Position Position,
   Resolution Resolution,
   Orientation Orientation,
@@ -13,6 +14,7 @@ public record Settings(
   public int BottomY => Position.Y + Resolution.Height;
   public string DeviceId { get; set; } = DeviceId;
   public bool IsPrimary { get; set; } = IsPrimary;
+  public bool IsConnected { get; set; } = IsConnected;
   public Position Position { get; set; } = Position;
   public Resolution Resolution { get; set; } = Resolution;
   public Orientation Orientation { get; set; } = Orientation;

@@ -5,11 +5,12 @@ namespace Gregghz.DisplayManager.Windows.Extensions;
 
 public static class SettingsExtensions
 {
-  public static Settings FromDevMode(string deviceId, in DEVMODE mode)
+  public static Settings FromDevMode(string deviceId, bool isConnected, in DEVMODE mode)
   {
     return new Settings(
       deviceId,
       mode.dmPositionX == 0 && mode.dmPositionY == 0,
+      isConnected,
       new Position(mode.dmPositionX, mode.dmPositionY),
       new Resolution(mode.dmPelsWidth, mode.dmPelsHeight),
       (Orientation)mode.dmDisplayOrientation,
@@ -19,6 +20,12 @@ public static class SettingsExtensions
 
   public static DEVMODE UpdateDevMode(this Settings settings, ref DEVMODE mode)
   {
+    mode.dmFields |= Constants.DM_POSITION |
+                     Constants.DM_PELSWIDTH |
+                     Constants.DM_PELSHEIGHT |
+                     Constants.DM_DISPLAYORIENTATION |
+                     Constants.DM_DISPLAYFREQUENCY;
+
     if (settings.IsPrimary)
     {
       mode.dmPositionX = 0;

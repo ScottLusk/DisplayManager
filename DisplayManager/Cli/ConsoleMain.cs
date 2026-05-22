@@ -1,22 +1,22 @@
 using CommandLine;
 using Gregghz.DisplayManager.Services;
-using Gregghz.DisplayManager.UI.Cli.Model;
+using Gregghz.DisplayManager.Cli.Model;
 
-namespace Gregghz.DisplayManager.UI.Cli;
+namespace Gregghz.DisplayManager.Cli;
 
 public class ConsoleMain(IDisplayService displayService, ILayoutService layoutService)
 {
   public void Run(string[] args)
   {
     Parser.Default.ParseArguments<CliOptions>(args)
-      .WithParsed(Run)
+      .WithParsed(opts => Run(opts).GetAwaiter().GetResult())
       .WithNotParsed(errs =>
       {
         foreach (var err in errs) Console.WriteLine(err);
       });
   }
 
-  private async void Run(CliOptions opts)
+  private async Task Run(CliOptions opts)
   {
     if (opts.Info)
     {
@@ -28,6 +28,12 @@ public class ConsoleMain(IDisplayService displayService, ILayoutService layoutSe
     if (opts.ListLayouts)
     {
       await ListLayouts();
+      return;
+    }
+
+    if (opts.ClearLayouts)
+    {
+      await ClearLayouts();
       return;
     }
 
@@ -56,6 +62,31 @@ public class ConsoleMain(IDisplayService displayService, ILayoutService layoutSe
   {
     var layoutNames = await layoutService.GetSavedLayouts();
 
+    if (layoutNames.Count == 0)
+    {
+      var previousColor = Console.ForegroundColor;
+      Console.ForegroundColor = ConsoleColor.Yellow;
+      Console.WriteLine("No saved layouts found.");
+      Console.ForegroundColor = previousColor;
+      return;
+    }
+
     foreach (var layoutName in layoutNames) Console.WriteLine(layoutName);
+  }
+
+  private async Task ClearLayouts()
+  {
+    var clearedCount = await layoutService.ClearLayouts();
+
+    if (clearedCount == 0)
+    {
+      var previousColor = Console.ForegroundColor;
+      Console.ForegroundColor = ConsoleColor.Yellow;
+      Console.WriteLine("No saved layouts found.");
+      Console.ForegroundColor = previousColor;
+      return;
+    }
+
+    Console.WriteLine($"Cleared {clearedCount} saved layout(s).");
   }
 }

@@ -8,27 +8,39 @@ namespace Gregghz.DisplayManager.Windows.Services.Implementations;
 
 public class WindowsDisplayService : IDisplayService
 {
+  private const string AnsiCyan = "\u001b[36m";
+  private const string AnsiGreen = "\u001b[32m";
+  private const string AnsiRed = "\u001b[31m";
+  private const string AnsiReset = "\u001b[0m";
+
+  private static DEVMODE CreateDevMode()
+  {
+    return new DEVMODE
+    {
+      dmSize = (short)Marshal.SizeOf<DEVMODE>()
+    };
+  }
+
   public Layout GetDisplayLayout()
   {
     List<Settings> foundSettings = [];
     var deviceMap = GetDeviceMap();
 
-    bool MonitorEnum(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
+    foreach (var device in GetDisplayDevices())
     {
-      var mi = new MONITORINFOEX();
-      User32.GetMonitorInfo(hMonitor, mi);
-      var deviceName = new string(mi.szDevice).TrimEnd((char)0);
+      var deviceName = device.DeviceName;
+      if (!deviceMap.TryGetValue(deviceName, out var id)) continue;
 
-      var mode = new DEVMODE();
-      User32.EnumDisplaySettings(deviceName, Constants.ENUM_CURRENT_SETTINGS, ref mode);
+      var mode = CreateDevMode();
+      var hasCurrentMode = User32.EnumDisplaySettings(deviceName, Constants.ENUM_CURRENT_SETTINGS, ref mode);
+      var hasRegistryMode = hasCurrentMode ||
+                            User32.EnumDisplaySettings(deviceName, Constants.ENUM_REGISTRY_SETTINGS, ref mode);
+      if (!hasRegistryMode) continue;
 
-      var id = deviceMap[deviceName];
-      foundSettings.Add(SettingsExtensions.FromDevMode(id, mode));
-
-      return true; // Continue enumeration
+      var isConnected = (device.StateFlags & Constants.DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0;
+      foundSettings.Add(SettingsExtensions.FromDevMode(id, isConnected, mode));
     }
 
-    User32.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, MonitorEnum, IntPtr.Zero);
     return new Layout(foundSettings);
   }
 
@@ -36,22 +48,27 @@ public class WindowsDisplayService : IDisplayService
   {
     var monitorInfo = "";
 
-    bool MonitorEnum(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
+    foreach (var device in GetDisplayDevices())
     {
-      var mi = new MONITORINFOEX();
-      User32.GetMonitorInfo(hMonitor, mi);
-      var deviceName = new string(mi.szDevice).TrimEnd((char)0);
+      var deviceName = device.DeviceName;
 
-      var mode = new DEVMODE();
-      User32.EnumDisplaySettings(deviceName, Constants.ENUM_CURRENT_SETTINGS, ref mode);
+      var mode = CreateDevMode();
+      var hasCurrentMode = User32.EnumDisplaySettings(deviceName, Constants.ENUM_CURRENT_SETTINGS, ref mode);
+      var hasRegistryMode = hasCurrentMode ||
+                            User32.EnumDisplaySettings(deviceName, Constants.ENUM_REGISTRY_SETTINGS, ref mode);
+      if (!hasRegistryMode) continue;
 
-      monitorInfo +=
-        $"Monitor: {deviceName} ({hMonitor}) - Bounds: {mi.rcMonitor.left}, {mi.rcMonitor.top}, {mi.rcMonitor.right}, {mi.rcMonitor.bottom}\n";
+      var connectionState =
+        (device.StateFlags & Constants.DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0 ? "Connected" : "Disconnected";
+      var stateLabel = connectionState == "Disconnected"
+        ? $"{AnsiRed}{connectionState}{AnsiReset}"
+        : $"{AnsiGreen}{connectionState}{AnsiReset}";
+      var isPrimary = (device.StateFlags & Constants.DISPLAY_DEVICE_PRIMARY_DEVICE) != 0;
+      var primaryLabel = isPrimary ? $"{AnsiCyan}PRIMARY{AnsiReset}" : "SECONDARY";
+
+      monitorInfo += $"Monitor: {deviceName} - State: {stateLabel} - {primaryLabel}\n";
       monitorInfo += $"{mode}\r\n\r\n";
-      return true; // Continue enumeration
     }
-
-    User32.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, MonitorEnum, IntPtr.Zero);
 
     return monitorInfo;
   }
@@ -75,22 +92,24 @@ public class WindowsDisplayService : IDisplayService
 
     foreach (var s in settings) await UpdateSettings(s.DeviceId, s);
 
-    ApplySettings();
+    var applyResult = ApplySettings();
+    if (applyResult != Constants.DISP_CHANGE_SUCCESSFUL)
+      await Console.Error.WriteLineAsync($"Desktop apply returned {GetDisplayChangeName(applyResult)} ({applyResult}).");
   }
 
-  private IEnumerable<DISPLAY_DEVICE> GetDisplayDevices()
+  private IEnumerable<DisplayApi.DISPLAY_DEVICE> GetDisplayDevices()
   {
-    var d = new DISPLAY_DEVICE();
-    d.cb = Marshal.SizeOf(d);
+    var monitor = new DisplayApi.DISPLAY_DEVICE();
+    monitor.cb = Marshal.SizeOf(monitor);
 
-    List<DISPLAY_DEVICE> result = new();
+    List<DisplayApi.DISPLAY_DEVICE> result = new();
 
-    for (uint id = 0; User32.EnumDisplayDevices(null, id, ref d, 0); id++)
+    for (uint id = 0; User32.EnumDisplayDevices(null, id, ref monitor, 0); id++)
     {
-      result.Add(d);
+      result.Add(monitor);
 
-      d = new DISPLAY_DEVICE();
-      d.cb = Marshal.SizeOf(d);
+      monitor = new DisplayApi.DISPLAY_DEVICE();
+      monitor.cb = Marshal.SizeOf(monitor);
     }
 
     return result;
@@ -99,19 +118,96 @@ public class WindowsDisplayService : IDisplayService
   private async Task<int> UpdateSettings(string deviceId, Settings settings)
   {
     var deviceMap = GetDeviceMap();
-    var deviceName = deviceMap[deviceId]; // @TODO: handle missing ID
+    if (!deviceMap.TryGetValue(deviceId, out var deviceName))
+    {
+      await Console.Error.WriteLineAsync($"Skipping missing display device '{deviceId}'.");
+      return Constants.DISP_CHANGE_BADPARAM;
+    }
 
-    var mode = new DEVMODE();
-    await Task.Run(() => User32.EnumDisplaySettings(deviceName, Constants.ENUM_CURRENT_SETTINGS, ref mode));
+    var isCurrentlyConnected = IsDeviceAttachedToDesktop(deviceName);
+    var shouldAttemptAttach = !isCurrentlyConnected && settings.IsConnected;
 
-    settings.UpdateDevMode(ref mode);
+    if (shouldAttemptAttach)
+    {
+      var topologyResult = EnsureExtendedTopology();
+      if (topologyResult != Constants.DISP_CHANGE_SUCCESSFUL)
+      {
+        await Console.Error.WriteLineAsync(
+          $"Topology extend returned {GetDisplayChangeName(topologyResult)} ({topologyResult}) before attaching '{deviceName}'.");
+      }
+    }
 
-    uint dwFlags = Constants.CDS_UPDATEREGISTRY | Constants.CDS_NORESET;
+    var mode = CreateDevMode();
+    var hasCurrentMode = await Task.Run(() => User32.EnumDisplaySettings(deviceName, Constants.ENUM_CURRENT_SETTINGS, ref mode));
+    if (!hasCurrentMode)
+      await Task.Run(() => User32.EnumDisplaySettings(deviceName, Constants.ENUM_REGISTRY_SETTINGS, ref mode));
+    // If both fail the monitor has no base mode; apply entirely from saved settings.
+
+    if (settings.IsConnected)
+    {
+      settings.UpdateDevMode(ref mode);
+    }
+    else
+    {
+      // Disable this output in the loaded layout.
+      mode.dmFields = Constants.DM_POSITION |
+                      Constants.DM_PELSWIDTH |
+                      Constants.DM_PELSHEIGHT;
+      mode.dmPositionX = 0;
+      mode.dmPositionY = 0;
+      mode.dmPelsWidth = 0;
+      mode.dmPelsHeight = 0;
+    }
+
+    // Stage all monitors for one final desktop apply.
+    uint dwFlags = (uint)(Constants.CDS_UPDATEREGISTRY | Constants.CDS_NORESET);
     if (settings.IsPrimary) dwFlags |= Constants.CDS_SET_PRIMARY;
 
     var result = await Task.Run(() =>
       User32.ChangeDisplaySettingsEx(deviceName, ref mode, IntPtr.Zero, dwFlags, IntPtr.Zero));
+
+    if (result != Constants.DISP_CHANGE_SUCCESSFUL)
+      await Console.Error.WriteLineAsync(
+        $"Apply failed for '{deviceName}' ({deviceId}): {GetDisplayChangeName(result)} ({result}).");
+
     return result;
+  }
+
+  private static int EnsureExtendedTopology()
+  {
+    return User32.SetDisplayConfig(
+      0,
+      IntPtr.Zero,
+      0,
+      IntPtr.Zero,
+      Constants.SDC_APPLY | Constants.SDC_TOPOLOGY_EXTEND);
+  }
+
+  private bool IsDeviceAttachedToDesktop(string deviceName)
+  {
+    foreach (var device in GetDisplayDevices())
+    {
+      if (!string.Equals(device.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase)) continue;
+      return (device.StateFlags & Constants.DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0;
+    }
+
+    return false;
+  }
+
+  private static string GetDisplayChangeName(int result)
+  {
+    return result switch
+    {
+      Constants.DISP_CHANGE_SUCCESSFUL => nameof(Constants.DISP_CHANGE_SUCCESSFUL),
+      Constants.DISP_CHANGE_RESTART => nameof(Constants.DISP_CHANGE_RESTART),
+      Constants.DISP_CHANGE_FAILED => nameof(Constants.DISP_CHANGE_FAILED),
+      Constants.DISP_CHANGE_BADMODE => nameof(Constants.DISP_CHANGE_BADMODE),
+      Constants.DISP_CHANGE_NOTUPDATED => nameof(Constants.DISP_CHANGE_NOTUPDATED),
+      Constants.DISP_CHANGE_BADFLAGS => nameof(Constants.DISP_CHANGE_BADFLAGS),
+      Constants.DISP_CHANGE_BADPARAM => nameof(Constants.DISP_CHANGE_BADPARAM),
+      Constants.DISP_CHANGE_BADDUALVIEW => nameof(Constants.DISP_CHANGE_BADDUALVIEW),
+      _ => "UNKNOWN_RESULT"
+    };
   }
 
   private static int ApplySettings(string? deviceName = null)

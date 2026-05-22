@@ -1,5 +1,5 @@
 using Gregghz.DisplayManager.Services.Implementations;
-using Gregghz.DisplayManager.UI.Cli;
+using Gregghz.DisplayManager.Cli;
 
 namespace Gregghz.DisplayManager;
 
