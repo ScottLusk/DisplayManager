@@ -1,32 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <OutputType>WinExe</OutputType>
+        <OutputType>Exe</OutputType>
         <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
         <TargetPlatfomVersion>10.0.19041.0</TargetPlatfomVersion>
         <TargetPlatfomMinVersion>10.0.17763</TargetPlatfomMinVersion>
         <RootNamespace>Gregghz.DisplayManager.Windows</RootNamespace>
-        <ApplicationManifest>app.manifest</ApplicationManifest>
         <Platform>x86;x64</Platform>
         <RuntimeIdentifiers>win-x86;win-x64</RuntimeIdentifiers>
         <PublishProfile>win-$(Platform).pubxml</PublishProfile>
-        <UseWinUI>true</UseWinUI>
-        <EnableMsixTooling>true</EnableMsixTooling>
-        <WindowsPackageType>None</WindowsPackageType>
-        <AppxPackage>false</AppxPackage>
-        <WinUISDKReferences>false</WinUISDKReferences>
 
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.6"/>
-        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.240311000"/>
         <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.3233"/>
-    </ItemGroup>
-
-    <ItemGroup>
-        <Manifest Include="app.manifest"/>
     </ItemGroup>
 
     <ItemGroup>

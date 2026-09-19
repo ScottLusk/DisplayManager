@@ -1,6 +1,6 @@
 using Gregghz.DisplayManager.Services;
 using Gregghz.DisplayManager.Services.Implementations;
-using Gregghz.DisplayManager.UI.Cli;
+using Gregghz.DisplayManager.Cli;
 using Gtk;
 
 namespace Gregghz.DisplayManager;

@@ -21,6 +21,16 @@ public class FileSystemLayoutService(string basePath) : ILayoutService
     });
   }
 
+  public Task<int> ClearLayouts()
+  {
+    return Task.Run(() =>
+    {
+      var savedLayouts = Directory.GetFiles(basePath, "*.json");
+      foreach (var layoutPath in savedLayouts) File.Delete(layoutPath);
+      return savedLayouts.Length;
+    });
+  }
+
   public async Task<Layout?> GetLayout(string name)
   {
     var configPath = Path.Combine(basePath, $"{name}.json");

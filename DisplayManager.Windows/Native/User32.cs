@@ -25,6 +25,14 @@ public static class User32
   public static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
 
   [DllImport("user32.dll", CharSet = CharSet.Auto)]
-  public static extern bool EnumDisplayDevices(string lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice,
+  public static extern bool EnumDisplayDevices(string? lpDevice, uint iDevNum, ref DisplayApi.DISPLAY_DEVICE lpDisplayDevice,
     uint dwFlags);
+
+  [DllImport("user32.dll")]
+  public static extern int SetDisplayConfig(
+    uint numPathArrayElements,
+    IntPtr pathArray,
+    uint numModeInfoArrayElements,
+    IntPtr modeInfoArray,
+    uint flags);
 }

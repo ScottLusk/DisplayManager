@@ -1,6 +1,6 @@
 using CommandLine;
 
-namespace Gregghz.DisplayManager.UI.Cli.Model;
+namespace Gregghz.DisplayManager.Cli.Model;
 
 public class CliOptions
 {
@@ -15,4 +15,7 @@ public class CliOptions
 
   [Option('l', "list", Required = false, HelpText = "List all current saved layouts.")]
   public bool ListLayouts { get; set; } = false;
+
+  [Option('c', "clear", Required = false, HelpText = "Delete all saved layouts.")]
+  public bool ClearLayouts { get; set; } = false;
 }

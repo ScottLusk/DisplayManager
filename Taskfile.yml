@@ -1,0 +1,142 @@
+version: '3'
+
+vars:
+  SOLUTION: DisplayManager.sln
+  CORE_LIBRARY_PROJECT: DisplayManager/DisplayManager.csproj
+  WINDOWS_HOST_PROJECT: '{{.TASKFILE_DIR}}\DisplayManager.Windows\DisplayManager.Windows.csproj'
+  WINDOWS_HOST_EXE: '{{.TASKFILE_DIR}}\DisplayManager.Windows\bin\Debug\net8.0-windows10.0.19041.0\DisplayManager.Windows.exe'
+  LINUX_HOST_PROJECT: DisplayManager.Linux/DisplayManager.Linux.csproj
+  MAC_HOST_PROJECT: DisplayManager.Mac/DispayManager.Mac.csproj
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list-all
+
+  restore:
+    desc: Restore NuGet packages
+    sources:
+      - DisplayManager.sln
+      - global.json
+      - DisplayManager/DisplayManager.csproj
+      - DisplayManager.Windows/DisplayManager.Windows.csproj
+      - DisplayManager.Linux/DisplayManager.Linux.csproj
+      - DisplayManager.Mac/DispayManager.Mac.csproj
+      - Directory.Packages.props
+      - Directory.Build.props
+      - Directory.Build.targets
+      - nuget.config
+      - NuGet.config
+    generates:
+      - DisplayManager/obj/project.assets.json
+      - DisplayManager.Windows/obj/project.assets.json
+      - DisplayManager.Linux/obj/project.assets.json
+      - DisplayManager.Mac/obj/project.assets.json
+    cmds:
+      - dotnet restore {{.SOLUTION}}
+
+  build:
+    desc: Build all projects in the solution (Debug)
+    deps: [restore]
+    sources:
+      - DisplayManager.sln
+      - global.json
+      - DisplayManager/**/*.cs
+      - DisplayManager/DisplayManager.csproj
+      - DisplayManager.Windows/**/*.cs
+      - DisplayManager.Windows/DisplayManager.Windows.csproj
+      - DisplayManager.Linux/**/*.cs
+      - DisplayManager.Linux/DisplayManager.Linux.csproj
+      - DisplayManager.Mac/**/*.cs
+      - DisplayManager.Mac/DispayManager.Mac.csproj
+    generates:
+      - DisplayManager/bin/Debug/net8.0/DisplayManager.dll
+      - DisplayManager.Windows/bin/Debug/net8.0-windows10.0.19041.0/DisplayManager.Windows.dll
+      - DisplayManager.Linux/bin/Debug/net8.0/DisplayManager.Linux.dll
+      - DisplayManager.Mac/bin/Debug/net8.0/DispayManager.Mac.dll
+    cmds:
+      - dotnet build {{.SOLUTION}} --configuration Debug --no-restore
+
+  build-release:
+    desc: Build all projects in the solution (Release)
+    deps: [restore]
+    cmds:
+      - dotnet build {{.SOLUTION}} --configuration Release --no-restore
+
+  clean:
+    desc: Clean build outputs
+    cmds:
+      - dotnet clean {{.SOLUTION}}
+
+  test:
+    desc: Run tests for the solution
+    deps: [build]
+    cmds:
+      - dotnet test {{.SOLUTION}} --configuration Debug --no-build --verbosity minimal
+
+  run:
+    desc: "Run the Windows host executable that uses the shared DisplayManager library"
+    deps: [build]
+    platforms: [windows]
+    cmds:
+      - '"{{.WINDOWS_HOST_EXE}}" {{.CLI_ARGS}}'
+
+  run-linux:
+    desc: "Run the Linux host executable that uses the shared DisplayManager library"
+    deps: [build]
+    platforms: [linux]
+    cmds:
+      - dotnet run --project {{.LINUX_HOST_PROJECT}} --configuration Debug --no-build -- {{.CLI_ARGS}}
+
+  run-mac:
+    desc: "Run the Mac host executable that uses the shared DisplayManager library"
+    deps: [build]
+    platforms: [darwin]
+    cmds:
+      - dotnet run --project {{.MAC_HOST_PROJECT}} --configuration Debug --no-build -- {{.CLI_ARGS}}
+
+  save:
+    desc: "Save current display layout via the Windows host"
+    deps: [build]
+    platforms: [windows]
+    requires:
+      vars: [NAME]
+    cmds:
+      - '"{{.WINDOWS_HOST_EXE}}" --save {{.NAME}}'
+
+  load:
+    desc: "Load a saved display layout via the Windows host"
+    deps: [build]
+    platforms: [windows]
+    requires:
+      vars: [NAME]
+    cmds:
+      - '"{{.WINDOWS_HOST_EXE}}" --load {{.NAME}}'
+
+  list-layouts:
+    desc: "List saved display layouts via the Windows host"
+    deps: [build]
+    platforms: [windows]
+    cmds:
+      - '"{{.WINDOWS_HOST_EXE}}" --list'
+
+  info:
+    desc: "Show display information via the Windows host"
+    deps: [build]
+    platforms: [windows]
+    cmds:
+      - '"{{.WINDOWS_HOST_EXE}}" --info'
+
+  clear-layouts:
+    desc: "Clear all saved display layouts via the Windows host"
+    deps: [build]
+    platforms: [windows]
+    cmds:
+      - '"{{.WINDOWS_HOST_EXE}}" --clear'
+
+  build-core:
+    desc: Build only the shared DisplayManager library (Debug)
+    deps: [restore]
+    cmds:
+      - dotnet build {{.CORE_LIBRARY_PROJECT}} --configuration Debug --no-restore
